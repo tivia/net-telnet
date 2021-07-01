@@ -11,6 +11,7 @@
 
 require "net/protocol"
 require "English"
+require 'async'
 
 module Net
 
@@ -277,6 +278,7 @@ module Net
       @options["Prompt"]     = /[$%#>] \z/n  unless @options.has_key?("Prompt")
       @options["Timeout"]    = 10            unless @options.has_key?("Timeout")
       @options["Waittime"]   = 0             unless @options.has_key?("Waittime")
+      @task                  = Async::Task.current if Async::Task.current?
       unless @options.has_key?("Binmode")
         @options["Binmode"]    = false
       else
@@ -343,14 +345,14 @@ module Net
         @dumplog.log_dump('#', message) if @options.has_key?("Dump_log")
 
         begin
-          if @options["Timeout"] == false
-            @sock = TCPSocket.open(@options["Host"], @options["Port"])
-          else
-            Timeout.timeout(@options["Timeout"], Net::OpenTimeout) do
+          if @options["Timeout"] && defined?(@task)
+            @task.with_timeout(@options["Timeout"]) do
               @sock = TCPSocket.open(@options["Host"], @options["Port"])
             end
+          else
+            @sock = TCPSocket.open(@options["Host"], @options["Port"])
           end
-        rescue Net::OpenTimeout
+        rescue Net::OpenTimeout, Async::TimeoutError
           raise Net::OpenTimeout, "timed out while opening a connection to the host"
         rescue
           @log.write($ERROR_INFO.to_s + "\n") if @options.has_key?("Output_log")
@@ -552,12 +554,9 @@ module Net
       line = ''
       buf = ''
       rest = ''
-      until(prompt === line and not @sock.wait_readable(waittime))
-        unless @sock.wait_readable(time_out)
-          raise Net::ReadTimeout, "timed out while waiting for more data"
-        end
+      until(prompt === line)
         begin
-          c = @sock.readpartial(1024 * 1024)
+          c = @sock.recv(1024 * 1024)
           @dumplog.log_dump('<', c) if @options.has_key?("Dump_log")
           if @options["Telnetmode"]
             c = rest + c
@@ -612,7 +611,7 @@ module Net
       while 0 < length
         @sock.wait_writable
         @dumplog.log_dump('>', string[-length..-1]) if @options.has_key?("Dump_log")
-        length -= @sock.syswrite(string[-length..-1])
+        length -= @sock.send(string[-length..-1], 0)
       end
     end
 

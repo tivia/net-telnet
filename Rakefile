@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require 'bundler/gem_tasks'
 require 'rubygems'
 require 'rubygems/package_task'
 require 'rdoc/task'

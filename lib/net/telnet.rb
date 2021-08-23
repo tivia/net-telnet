@@ -12,6 +12,9 @@
 require "net/protocol"
 require "English"
 require 'async'
+require 'async/io'
+require 'async/io/stream'
+
 
 module Net
 
@@ -345,13 +348,18 @@ module Net
         @dumplog.log_dump('#', message) if @options.has_key?("Dump_log")
 
         begin
+          endpoint = Async::IO::Endpoint.tcp(@options["Host"], @options["Port"])
+
           if @options["Timeout"] && defined?(@task)
             @task.with_timeout(@options["Timeout"]) do
-              @sock = TCPSocket.open(@options["Host"], @options["Port"])
+              @sock = Async::IO::Stream.new(endpoint.connect)
+              #@sock = TCPSocket.open(@options["Host"], @options["Port"])
             end
           else
-            @sock = TCPSocket.open(@options["Host"], @options["Port"])
+            @sock = Async::IO::Stream.new(endpoint.connect)
+            #@sock = TCPSocket.open(@options["Host"], @options["Port"])
           end
+
         rescue Net::OpenTimeout, Async::TimeoutError
           raise Net::OpenTimeout, "timed out while opening a connection to the host"
         rescue
@@ -359,8 +367,8 @@ module Net
           @dumplog.log_dump('#', $ERROR_INFO.to_s + "\n") if @options.has_key?("Dump_log")
           raise
         end
-        @sock.sync = true
-        @sock.binmode
+        #@sock.sync = true
+        #@sock.binmode
 
         message = "Connected to " + @options["Host"] + ".\n"
         yield(message) if block_given?
@@ -556,7 +564,20 @@ module Net
       rest = ''
       until(prompt === line)
         begin
-          c = @sock.recv(1024 * 1024)
+          c = nil
+          if @options["Timeout"]
+            begin
+              @task.with_timeout(@options["Timeout"]) do
+                c = @sock.read_partial(1024 * 1024)
+              end
+
+            rescue Net::OpenTimeout, Async::TimeoutError
+              raise Net::OpenTimeout, "timed out while waiting cmd"
+            end
+          else
+            c = @sock.read_partial(1024 * 1024)
+          end
+
           @dumplog.log_dump('<', c) if @options.has_key?("Dump_log")
           if @options["Telnetmode"]
             c = rest + c
@@ -609,9 +630,9 @@ module Net
     def write(string)
       length = string.length
       while 0 < length
-        @sock.wait_writable
+        #@sock.wait_writable
         @dumplog.log_dump('>', string[-length..-1]) if @options.has_key?("Dump_log")
-        length -= @sock.send(string[-length..-1], 0)
+        length -= @sock.write(string[-length..-1])
       end
     end
 

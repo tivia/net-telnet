@@ -25,4 +25,5 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency "rake"
   spec.add_development_dependency "mspec"
   spec.add_runtime_dependency 'async'
+  spec.add_runtime_dependency 'async-io'
 end

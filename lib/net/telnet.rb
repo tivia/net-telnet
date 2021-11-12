@@ -563,6 +563,7 @@ module Net
       buf = ''
       rest = ''
       until(prompt === line)
+        @task.sleep(waittime)
         begin
           c = nil
           if @options["Timeout"]
